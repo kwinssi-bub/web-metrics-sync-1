@@ -384,11 +384,30 @@ def run() -> int:
                                     continue
 
                                 tab_elapsed_iters[i] += 1
-                                # 8 minutes = 480 seconds = 96 iterations of 5s
-                                if tab_elapsed_iters[i] > 96:
+
+                                # 5 minutes = 300 seconds = 60 iterations of 5s
+                                if tab_elapsed_iters[i] == 60:
+                                    log.warning(
+                                        "[%s] Tab %d generation seems lagged after 5 minutes. Refreshing page to recover...",
+                                        state_name,
+                                        i + 1,
+                                    )
+                                    try:
+                                        driver.switch_to.window(window)
+                                        driver.refresh()
+                                        time.sleep(5)
+                                    except Exception as e:
+                                        log.warning(
+                                            "Failed to refresh tab %d: %s", i + 1, e
+                                        )
+                                    any_still_generating = True
+                                    continue
+
+                                # 10 minutes = 600 seconds = 120 iterations of 5s
+                                if tab_elapsed_iters[i] > 120:
                                     if tab_attempts[i] < 3:
                                         log.warning(
-                                            "[%s] Tab %d timed out after 8 minutes. Retrying prompt...",
+                                            "[%s] Tab %d timed out after 10 minutes. Retrying prompt...",
                                             state_name,
                                             i + 1,
                                         )
@@ -598,7 +617,18 @@ def run() -> int:
 
                         status = "GENERATING"
                         result = None
-                        for _ in range(120):  # 10 minutes max
+                        for seq_iter in range(1, 121):  # 10 minutes max
+                            if seq_iter == 60:
+                                log.warning(
+                                    "[%s] Generation seems lagged after 5 minutes. Refreshing page to recover...",
+                                    state_name,
+                                )
+                                try:
+                                    driver.refresh()
+                                    time.sleep(5)
+                                except Exception as e:
+                                    pass
+
                             status, result = chat.check_generation_status(driver)
                             if status == "FINISHED" and result:
                                 if "lalobaya" not in result.response_text.lower():
