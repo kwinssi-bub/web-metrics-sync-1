@@ -6,7 +6,7 @@ on:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - name: Checkout
@@ -16,11 +16,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - name: Install dependencies
-        run: |
-          npm init -y
-          npm install puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 
       - name: Ping new links
         run: node open_websites.js
