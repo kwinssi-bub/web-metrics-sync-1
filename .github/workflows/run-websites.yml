@@ -1,9 +1,9 @@
 name: Run Website Opener (Ping Links)
 
 on:
-  # Run every 30 minutes, staggered from the farm
+  # Run every hour, staggered 15 mins after the hour
   schedule:
-    - cron: '15,45 * * * *'
+    - cron: '15 * * * *'
   # Allow manual trigger
   workflow_dispatch:
 
