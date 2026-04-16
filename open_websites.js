@@ -1,5 +1,7 @@
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
+const http = require('http');
 
 const LINKS_FILE = path.join(__dirname, 'automation', 'data', 'links.json');
 const PINGED_FILE = path.join(__dirname, 'automation', 'data', 'pinged.json');
@@ -19,22 +21,27 @@ function saveJson(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2));
 }
 
-async function ping(url) {
-  try {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), TIMEOUT);
-    const res = await fetch(url, {
-      signal: controller.signal,
-      method: 'GET',
-      redirect: 'manual',
+function ping(url) {
+  return new Promise((resolve) => {
+    const isHttps = url.startsWith('https://');
+    const client = isHttps ? https : http;
+    const parsedUrl = new URL(url);
+
+    const req = client.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+    }, (res) => {
+      resolve({ url, ok: res.statusCode >= 200 && res.statusCode < 400, status: res.statusCode });
+      res.destroy();
     });
-    clearTimeout(id);
-    const status = res.status;
-    const ok = status >= 200 && status < 400;
-    return { url, ok, status };
-  } catch (err) {
-    return { url, ok: true, status: -1 };
-  }
+
+    req.on('error', () => resolve({ url, ok: true, status: -1 }));
+    req.on('timeout', () => { req.destroy(); resolve({ url, ok: true, status: 0 }); });
+
+    req.setTimeout(TIMEOUT, () => {
+      req.destroy();
+      resolve({ url, ok: true, status: 0 });
+    });
+  });
 }
 
 async function main() {
