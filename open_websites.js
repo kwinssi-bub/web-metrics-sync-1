@@ -5,78 +5,74 @@ const path = require('path');
 
 puppeteer.use(StealthPlugin());
 
-// Load URLs from config file
-const configPath = path.join(__dirname, 'automation', 'data', 'links.json');
-let urls = [];
+const LINKS_FILE = path.join(__dirname, 'automation', 'data', 'links.json');
+const PINGED_FILE = path.join(__dirname, 'automation', 'data', 'pinged.json');
+const WAIT_TIME = 5000;
 
-try {
-  const configData = fs.readFileSync(configPath, 'utf8');
-  urls = JSON.parse(configData);
-  console.log(`Loaded ${urls.length} URLs from ${configPath}`);
-} catch (err) {
-  console.error(`Error loading config from ${configPath}:`, err.message);
-  process.exit(1);
+function loadJson(file, fallback = []) {
+  try {
+    const data = fs.readFileSync(file, 'utf8');
+    return JSON.parse(data);
+  } catch {
+    return fallback;
+  }
 }
 
-const BATCH_SIZE = 5;
-const WAIT_TIME = 30000; // 30 seconds
+function saveJson(file, data) {
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
 
-async function openBatch(batch, batchNumber, totalBatches) {
-  console.log(`\n[Batch ${batchNumber}/${totalBatches}] Opening ${batch.length} URLs...`);
-  
-  const browsers = [];
-  
-  for (let i = 0; i < batch.length; i++) {
-    const url = batch[i];
-    console.log(`  [${i + 1}/${batch.length}] Opening: ${url}`);
-    
-    try {
-      const browser = await puppeteer.launch({
-        headless: true, // HEADLESS MODE
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
-      
-      const page = await browser.newPage();
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-      
-      browsers.push(browser);
-    } catch (err) {
-      console.log(`  Error opening ${url}: ${err.message}`);
+function main() {
+  const allLinks = loadJson(LINKS_FILE, []);
+  const pingedLinks = loadJson(PINGED_FILE, []);
+
+  const newLinks = allLinks.filter(link => !pingedLinks.includes(link));
+
+  console.log(`Total links: ${allLinks.length}`);
+  console.log(`Already pinged: ${pingedLinks.length}`);
+  console.log(`New links to ping: ${newLinks.length}`);
+
+  if (newLinks.length === 0) {
+    console.log('No new links to ping. Exiting.');
+    process.exit(0);
+  }
+
+  (async () => {
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+
+    let pinged = 0;
+    let failed = 0;
+
+    for (const url of newLinks) {
+      try {
+        const page = await browser.newPage();
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
+        await new Promise(r => setTimeout(r, WAIT_TIME));
+        await page.close();
+
+        pingedLinks.push(url);
+        pinged++;
+
+        if (pinged % 50 === 0) {
+          saveJson(PINGED_FILE, pingedLinks);
+          console.log(`Progress: ${pinged}/${newLinks.length} new links pinged`);
+        }
+
+        console.log(`[OK] ${url}`);
+      } catch (err) {
+        failed++;
+        console.log(`[FAIL] ${url} - ${err.message.split('\n')[0]}`);
+        pingedLinks.push(url);
+      }
     }
-  }
-  
-  console.log(`[Batch ${batchNumber}] Waiting ${WAIT_TIME/1000} seconds...`);
-  await new Promise(resolve => setTimeout(resolve, WAIT_TIME));
-  
-  console.log(`[Batch ${batchNumber}] Closing browsers...`);
-  for (const browser of browsers) {
-    try {
-      await browser.close();
-    } catch (err) {
-      // Ignore close errors
-    }
-  }
-  
-  console.log(`[Batch ${batchNumber}] Done.`);
-}
 
-async function main() {
-  const totalBatches = Math.ceil(urls.length / BATCH_SIZE);
-  console.log(`Starting puppeteer batch opener (HEADLESS MODE)`);
-  console.log(`Total URLs: ${urls.length}, Batch size: ${BATCH_SIZE}, Wait time: ${WAIT_TIME/1000}s`);
-  console.log(`Total batches: ${totalBatches}`);
-  
-  for (let i = 0; i < urls.length; i += BATCH_SIZE) {
-    const batch = urls.slice(i, i + BATCH_SIZE);
-    const batchNumber = Math.floor(i / BATCH_SIZE) + 1;
-    await openBatch(batch, batchNumber, totalBatches);
-  }
-  
-  console.log('\nAll batches completed!');
-  process.exit(0);
-}
+    saveJson(PINGED_FILE, pingedLinks);
+    await browser.close();
 
-main().catch(err => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+    console.log(`\nDone. Pinged: ${pinged}, Failed: ${failed}, Total tracked: ${pingedLinks.length}`);
+    process.exit(0);
+  })();
+}
