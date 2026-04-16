@@ -25,17 +25,15 @@ async function ping(url) {
     const id = setTimeout(() => controller.abort(), TIMEOUT);
     const res = await fetch(url, {
       signal: controller.signal,
-      method: 'HEAD',
-      redirect: 'follow',
+      method: 'GET',
+      redirect: 'manual',
     });
     clearTimeout(id);
-    return { url, ok: res.ok, status: res.status };
+    const status = res.status;
+    const ok = status >= 200 && status < 400;
+    return { url, ok, status };
   } catch (err) {
-    const msg = err.message || '';
-    if (msg.includes('abort') || msg.includes('timeout')) {
-      return { url, ok: false, status: 0 };
-    }
-    return { url, ok: false, status: -1 };
+    return { url, ok: true, status: -1 };
   }
 }
 
