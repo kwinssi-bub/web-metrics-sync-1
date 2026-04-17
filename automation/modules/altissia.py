@@ -112,7 +112,32 @@ def append_and_push_links(links: list[str], use_git: bool = False) -> None:
         time.sleep(1)
 
     if not lock_acquired:
-        print("[!] Could not acquire git lock. Another workflow is pushing. Skipping.")
+        print(
+            "[!] Could not acquire git lock. Another workflow is pushing. Saving to Dropbox anyway..."
+        )
+
+        if DROPBOX_AVAILABLE:
+            try:
+                existing_links = load_from_dropbox(
+                    "zai-farms", "links.json", default=[]
+                )
+                if not isinstance(existing_links, list):
+                    existing_links = []
+
+                new_count = 0
+                for link in links:
+                    if link not in existing_links:
+                        existing_links.append(link)
+                        new_count += 1
+
+                if new_count > 0:
+                    sync_to_dropbox(existing_links, "zai-farms", "links.json")
+                    print(
+                        f"[*] Dropbox backup: {new_count} new links synced (total: {len(existing_links)})"
+                    )
+            except Exception as e:
+                print(f"[!] Dropbox backup failed: {e}")
+
         return
 
     tmp_creds = None
@@ -194,14 +219,16 @@ def append_and_push_links(links: list[str], use_git: bool = False) -> None:
                     existing_links = []
 
                 new_count = 0
-                for link in data:
+                for link in links:
                     if link not in existing_links:
                         existing_links.append(link)
                         new_count += 1
 
-                if new_count > 0 or not existing_links:
+                if new_count > 0:
                     sync_to_dropbox(existing_links, "zai-farms", "links.json")
-                    print(f"[*] Synced {len(existing_links)} total links to Dropbox")
+                    print(
+                        f"[*] Dropbox: {new_count} new links synced (total: {len(existing_links)})"
+                    )
             except Exception as e:
                 print(f"[!] Dropbox sync failed: {e}")
 
