@@ -6,6 +6,12 @@ import random
 import shutil
 from pathlib import Path
 
+try:
+    from automation.modules.dropbox_sync import sync_to_dropbox, load_from_dropbox
+
+    DROPBOX_AVAILABLE = True
+except ImportError:
+    DROPBOX_AVAILABLE = False
 
 LOCK_BRANCH = "refs/heads/.lock"
 LOCK_TIMEOUT = 300
@@ -47,6 +53,27 @@ def append_and_push_links(links: list[str], use_git: bool = False) -> None:
         if added:
             links_file.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
             print(f"[*] Written {len(links)} links locally.")
+
+        if DROPBOX_AVAILABLE:
+            try:
+                existing_links = load_from_dropbox(
+                    "zai-farms", "links.json", default=[]
+                )
+                if not isinstance(existing_links, list):
+                    existing_links = []
+
+                new_count = 0
+                for link in data:
+                    if link not in existing_links:
+                        existing_links.append(link)
+                        new_count += 1
+
+                if new_count > 0:
+                    sync_to_dropbox(existing_links, "zai-farms", "links.json")
+                    print(f"[*] Synced {len(existing_links)} total links to Dropbox")
+            except Exception as e:
+                print(f"[!] Dropbox sync failed: {e}")
+
         return
 
     lock_acquired = False
@@ -157,6 +184,26 @@ def append_and_push_links(links: list[str], use_git: bool = False) -> None:
             print(f"[*] Successfully pushed {len(links)} links and credentials.")
         else:
             print(f"[!] Push failed: {push_res.stderr.strip()}")
+
+        if DROPBOX_AVAILABLE:
+            try:
+                existing_links = load_from_dropbox(
+                    "zai-farms", "links.json", default=[]
+                )
+                if not isinstance(existing_links, list):
+                    existing_links = []
+
+                new_count = 0
+                for link in data:
+                    if link not in existing_links:
+                        existing_links.append(link)
+                        new_count += 1
+
+                if new_count > 0 or not existing_links:
+                    sync_to_dropbox(existing_links, "zai-farms", "links.json")
+                    print(f"[*] Synced {len(existing_links)} total links to Dropbox")
+            except Exception as e:
+                print(f"[!] Dropbox sync failed: {e}")
 
     finally:
         if tmp_creds and tmp_creds.exists():
